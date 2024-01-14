@@ -1,0 +1,689 @@
+---
+title: "project"
+author: "Liu Yuzhou / Lu Zhoudao"
+date: "2023-11-27"
+output:
+  pdf_document:
+    latex_engine: xelatex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+As students from the Department of Computing, we are more familiar with data mining and machine learning. Machine learning need large-scale data, and its inherent difficulty of interpretation prevent it from being a complete replacement for the linear models. Linear models still have a high status in many basic tasks.
+
+
+
+# Customer Personality Analysis
+
+Customer Personality Analysis is a detailed analysis of a company's ideal customers. It helps a business to better understand its customers and makes it easier for them to modify products according to the specific needs, behaviors and concerns of different types of customers.
+
+Customer personality analysis helps a business to modify its product based on its target customers from different types of customer segments. For example, instead of spending money to market a new product to every customer in the company’s database, a company can analyze which customer segment is most likely to buy the product and then market the product only on that particular segment.(From Kaggle)
+
+We get the dataset from Kaggle, the link is here: https://www.kaggle.com/datasets/imakash3011/customer-personality-analysis/data
+
+We also do the data cleaning. because some data is missed, we just delete those rows. We also attached our final excel.
+
+
+```{r}
+data<-read.csv("marketing.csv",header = TRUE)
+head(data)
+attach(data)
+```
+```{r}
+summary(data)
+```
+## Attributes
+
+#People
+
+ID: Customer's unique identifier
+Year_Birth: Customer's birth year
+Education: Customer's education level
+Marital_Status: Customer's marital status
+Income: Customer's yearly household income
+Kidhome: Number of children in customer's household
+Teenhome: Number of teenagers in customer's household
+Dt_Customer: Date of customer's enrollment with the company
+Recency: Number of days since customer's last purchase
+Complain: 1 if the customer complained in the last 2 years, 0 otherwise
+#Products
+
+MntWines: Amount spent on wine in last 2 years
+MntFruits: Amount spent on fruits in last 2 years
+MntMeatProducts: Amount spent on meat in last 2 years
+MntFishProducts: Amount spent on fish in last 2 years
+MntSweetProducts: Amount spent on sweets in last 2 years
+MntGoldProds: Amount spent on gold in last 2 years
+#Promotion
+
+NumDealsPurchases: Number of purchases made with a discount
+AcceptedCmp1: 1 if customer accepted the offer in the 1st campaign, 0 otherwise
+AcceptedCmp2: 1 if customer accepted the offer in the 2nd campaign, 0 otherwise
+AcceptedCmp3: 1 if customer accepted the offer in the 3rd campaign, 0 otherwise
+AcceptedCmp4: 1 if customer accepted the offer in the 4th campaign, 0 otherwise
+AcceptedCmp5: 1 if customer accepted the offer in the 5th campaign, 0 otherwise
+Response: 1 if customer accepted the offer in the last campaign, 0 otherwise
+#Place
+
+NumWebPurchases: Number of purchases made through the company’s website
+NumCatalogPurchases: Number of purchases made using a catalogue
+NumStorePurchases: Number of purchases made directly in stores
+NumWebVisitsMonth: Number of visits to company’s website in the last month
+
+As a company, it is impolite to collect information about a customers' incomes. However, income is a important  attribute. For example, company can recommend latest products and services to higher-income groups, while recommending discounted services to lower-income groups.
+
+The company may know other information, like the  number of purchases made with a discount, the number of purchases made through the company’s website, which can be got by on-line transcation processing (OLTP), whcih is used to deal with everyday running of one aspect of an enterprise; customers also may fill in some personal information before becoming a member. Customer's birth year and education level may also can be got.
+
+However, most of the attributes don't fluctuate very much (Most variables are related to frequency). But the income gap will be huge. The prediction may be difficult.
+
+In this project, we want to use random intercept and random slope model to build a model to predict income based on other features. Based on our understanding, fixed models aren't easy to use categorical features which volatile very little to build models. However, this kind of features may be good to group. Random effect models is helpful by introducing more variables that are less convenient to add in a fixed model, in prder to improve prediction accuracy.
+
+```{r}
+library(car)
+library(corrplot)
+library(readr)
+library(dplyr)
+library(lme4)
+library(mlmRev)
+library(sjstats)
+library(lattice)
+library(dplyr)
+```
+
+We put the installation package at the top for easy management.
+
+
+We want to start simple.
+
+## Random Interect Model: no x's
+
+Customers' incomes are closely related to the education levels.In most situation, the higher the education level, the higher the income.
+
+There are two characteristics:
+
+Income: Customer's yearly household income
+Education: Customer's education level
+
+Consider the follow level-1 and level-2 models:
+$$Income_{ij} = \alpha_{0i}+\varepsilon_{ij}$$
+$$\alpha_{0i} = \gamma_{00}+u_{0i}$$
+
+In Laird-Ware form:
+$$y_{ij} = \beta_{0}+b_{0}+\varepsilon_{ij}$$
+This us a random-effects one-way ANOVA model with one fixed effect, $\beta_{1}$, representing the general population mean of the customers' yearly household income, and two random effects:
+
+$b_{0i}$ , representing the deviation of of income for the education level i from the general mean
+
+$\varepsilon_{ij}$, representing the deviation of indivdual j's income at the education level i from the education mean
+
+there are two variance components for this models:
+
+- Var($b_{0i}$) = $d^{2}$: the variance among education level means
+- Var($\varepsilon_{ij}$) = $\delta^{2}$: the variance among individuals at the same education level
+
+since $b_{0i}$ and $\varepsilon_{ij}$ are assumed to be independent, the variation in incomes among individuals can be decomposed into these two variance components:
+$$Var(y_{ij}) = d^{2}+\delta^{2}$$
+```{r}
+fit.model1 <- lmer(Income~1+(1|Education), data=data)
+s1 <- summary(fit.model1)
+s1
+```
+```{r}
+ranef(fit.model1)
+```
+
+
+##                       NULL Model
+
+|     Parameter       |   Value/variance    |      SD       |
+|---------------------|---------------------|---------------|
+|    $\gamma_{00}$    |       46187         |     6385      |         
+|       $d^2$         |     200365017       |    14155      | 
+|    $\delta^{2}$     |     604522974       |    24587      |                    
+
+```{r}
+performance::icc(fit.model1)
+```
+the intra-class correlation is the proportion of variation in individuals' income due to different education levels:
+
+$$\frac{d^{2}}{Var(y_{ij})} = \frac{d^2}{d^2+\delta^2} = \rho$$
+$\rho$ may also be interpreted as the correlation between the incomes of two individuals at the same education level:
+$$Cor(y_{ij}, y_{ij'}) = \rho$$
+$\rho$ = 0.249, about 24.9 percent of the variation in customers' incomes is "attribute" to differences at the same education levels
+
+and $(\hat{Income})_{ij}$ = 46187, is the overall mean,
+The overall variance of incomes is $s^2$ = (200365017+ 604522974) = 804887991.
+s = 28370.55
+
+
+## Add NumDealsPurchases as Level 1 Explanatory?
+```{r}
+set.seed(1234)
+#randomly select 4 single customers' educations
+cat<-unique(Education[Marital_Status=="Single"],4)
+cat
+#check whether it matches with data in cat
+cat.4<-data[is.element(Education,cat),]
+cat.4 <- cat.4 %>%
+filter(Marital_Status=="Single")
+plot<-xyplot(Income~NumDealsPurchases|Education,data=cat.4,main="Single",xlab="NumDealsPurchases",ylab="Income",layout=c(6,3),panel=function(x,y){
+    panel.xyplot(x,y)
+    panel.lmline(x,y)
+  })
+plot
+```
+```{r}
+#randomly select 4 Married customers' educations
+cat<-unique(Education[Marital_Status=="Married"],4)
+cat
+#check whether it matches with data in cat
+cat.4<-data[is.element(Education,cat),]
+cat.4 <- cat.4 %>%
+filter(Marital_Status=="Married")
+plot<-xyplot(Income~NumDealsPurchases|Education,data=cat.4,main="Married",xlab="NumDealsPurchases",ylab="Income",layout=c(6,3),panel=function(x,y){
+    panel.xyplot(x,y)
+    panel.lmline(x,y)
+  })
+plot
+```
+
+```{r}
+#randomly select 4 divorced customers' educations
+cat<-unique(Education[Marital_Status=="Divorced"],4)
+cat
+#check whether it matches with data in cat
+cat.4<-data[is.element(Education,cat),]
+cat.4 <- cat.4 %>%
+filter(Marital_Status=="Divorced")
+plot<-xyplot(Income~NumDealsPurchases|Education,data=cat.4,main="Divorced",xlab="NumDealsPurchases",ylab="Income",layout=c(6,3),panel=function(x,y){
+    panel.xyplot(x,y)
+    panel.lmline(x,y)
+  })
+plot
+```
+Here We can observe from the graph that NumDealsPurchases seems highly related to Income, as the income get higher,the value of NumDealsPurchases tends to be first increase and then decrease for different clusters, and for graduate,basic, it seems to be much more dense in the 0-2.5 region then master and phd classes. Here we try to explain the reason behind: the low income family maybe not good at manage their money, so they are less likely to use discount, but if the Income is high for that family, they won't pay attention to the discount. The popular which pay more attention to discount is those mid-Income falimilies. And for Masters and Phds, they maybe better in manage their salary, so they tend to make use of disaount better.
+
+
+NumDealsPurchases to help explain some of the variability of $Y_{ij}$.
+
+## a random-effects one-way ANCOVA
+--1 level-1 predictor (NumDealsPurchases, centered with education level), no level-2 predictors
+--random intercept, no random slops
+--model for the first (individual) level:
+$$y_{ij} = \alpha_{0i}+\alpha_{1i}NumDealsPurchases_{ij}+\varepsilon_{ij}$$
+--model for the second(education level) level:
+$\alpha_{0i} = \gamma_{00}+u_{0i}$ (the random intercept)
+$\alpha_{1i} = \gamma_{10}$ (the constant slope)
+
+--the combined model and the Laird-Ware form:
+$$y_{ij} = (\gamma_{00}+u_{0i})+\gamma_{01}NumDealsPurchases_{ij}+\varepsilon_{ij}$$
+$$= \gamma_{00}+\gamma_{01}NumDealsPurchases_{ij}+u_{0i}+\varepsilon_{ij} = \beta_{0}+\beta_{1}x_{1ij}+b_{0i}+\varepsilon_{ij}$$
+the fixed-effect coefficients $\beta_{0}$ and $\beta_{1}$ represent the average within-education-levels population intercept and slope respectively 
+
+```{r}
+fit.model2 <- lmer(Income~1+NumDealsPurchases+(1|Education), data=data)
+summary(fit.model2)
+```
+```{r}
+performance::icc(fit.model2)
+```
+While the adjusted ICC only relates to the random effects, the unadjusted ICC also takes the fixed effects variances into account.In our analysis, we just use adjusted ICC to ignore the effects of fixed variables.
+
+
+##                       NULL Model         Add NumDealsPurchases
+
+|                   |Value/variance|   SD   |Value/variance|   SD   |
+|-------------------|--------------|--------|--------------|--------|
+|    Fixed effects  |              |        |              |        |
+|   $\gamma_{00}$   |   46187      |  6385  |   48888.1    | 6551.2 |
+|   $\gamma_{01}$   |     -        |   -    |   -1214.1    |  270.7 |
+|-------------------|--------------|--------|--------------|--------|
+|    Random effects |              |        |              |        |
+|       $d^2$       | 200365017    |  14155 | 209329613    | 14468  |
+|   $\delta^2$      | 604522974    |  24587 | 599296388    | 24481  | 
+
+Residual intra-class correlation:
+$\hat{\rho}(Income|NumDealsPurchases)$ = $\frac{209329613}{209329613+599296388}$ = 0.259, is larger than the original one! That means a larger variation in customers' incomes is "attribute" to differences at the same education levels! Our try is better than the example about high schools because its ICC is from 0.18 to 0.11. 
+
+However, ICC can explain the difference among groups, it is not an indicator about how good a model is. We cannot just focus on ICC.
+
+Groups variance estimate $\hat{\gamma_{0}}^2$is larger, from 200365017 to 209329613. This isn't good for our model. In that case, we'd like to change to a better variable. There is a very unique variable called 'NumCatalogPurchases', which is the number of purchases made using a catalogue. We believe that this variable is not related too much to educational levels, and more in favor of individual consumption habits. It may be good to be a variable for the fixed model. 
+
+```{r}
+set.seed(1234)
+#randomly select 4 single customers' education
+cat<-unique(Education[Marital_Status=="Single"],4)
+cat
+#check whether it matches with data in cat
+cat.4<-data[is.element(Education,cat),]
+cat.4 <- cat.4 %>%
+filter(Marital_Status=="Single")
+plot<-xyplot(Income~NumCatalogPurchases|Education,data=cat.4,main="Single",xlab="NumCatalogPurchases",ylab="Income",layout=c(6,3),panel=function(x,y){
+    panel.xyplot(x,y)
+    panel.lmline(x,y)
+  })
+plot
+```
+```{r}
+#randomly select 18 married customers' education
+cat<-unique(Education[Marital_Status=="Married"],4)
+cat
+#check whether it matches with data in cat
+cat.4<-data[is.element(Education,cat),]
+cat.4 <- cat.4 %>%
+filter(Marital_Status=="Married")
+plot<-xyplot(Income~NumCatalogPurchases|Education,data=cat.4,main="Married",xlab="NumCatalogPurchases",ylab="Income",layout=c(6,3),panel=function(x,y){
+    panel.xyplot(x,y)
+    panel.lmline(x,y)
+  })
+plot
+```
+
+
+
+```{r}
+fit.model3 <- lmer(Income~1+NumCatalogPurchases+NumDealsPurchases+(1|Education), data=data)
+summary(fit.model3)
+```
+```{r}
+performance::icc(fit.model3)
+```
+Although the ICC of this new model decreases from 0.259 to 0.176, the variances decrease so much.
+
+Drop in between groups variance estimate $\hat{\gamma_{0}}^2$:
+$$\frac{91385387}{209329613} = 0.4365622$$
+or$(1-0.4365622)*100 = 56.36%$ decrease
+
+Drop in within groups variance estimate$\hat{\delta}^2$:
+$$\frac{397394718}{604522974} = 0.6573691$$
+or $(1-0.6573691)*100 = 34%$ decrease
+
+Interpretation some what problematic because NumCatalogPurchases helps to explain both the between and within groups variance of $Y_{ij}$:
+$$NumCatalogPurchases_{ij} = \overline{NumCatalogPurchases_{j}}+(NumCatalogPurchases_{ij}-\overline{NumCatalogPurchases_{j}})$$
+
+Regarding different mean levels of NumCatalogPurchases between and within education levels:
+
+"Group mean centered" variable, e.g.:
+$$x_{ij} = (NumCatalogPurchases_{ij}-\overline{NumCatalogPurchases_{j}})$$
+to model with group variability of $Y_{ij}$ w/rt education level
+
+Group mean as a level 2 (education level) for NumCatalogPurchases:
+$$z_{ij} = \overline{NumCatalogPurchases_{j}}$$
+The corresponding linear mixed model:
+$$Income_{ij} = \gamma_{00}+\gamma_{01}(NumCatalogPurchases_{ij}-\overline{NumCatalogPurchases_{j}})+\gamma_{02}NumDealsPurchases_{ij}+U_{0j}+\varepsilon_{ij}$$
+
+
+
+```{r}
+mean_value <- mean(NumCatalogPurchases, na.rm = TRUE)
+data$NumCatalogPurchases2 <- NumCatalogPurchases - mean_value
+```
+
+
+```{r}
+fit.model4 <- lmer(Income~1+NumDealsPurchases+NumCatalogPurchases2+(1|Education), data=data)
+summary(fit.model4)
+```
+
+```{r}
+performance::icc(fit.model4)
+```
+Maybe because our fixed effects are just the counts, which have very little fluctuation. Hierarchical model with centered NumCatalogPurchases may not as strong as the high school example. We wanted to do more analysis for this part, but decided to move on to other models because of the poor result.
+
+
+## Can we add more fixed variables?
+```{r}
+fit.model5 <- lmer(Income~1+NumCatalogPurchases+NumDealsPurchases+Recency+(1|Education), data=data)
+summary(fit.model5)
+```
+```{r}
+drop1(fit.model5, test="Chisq")
+```
+We try to add 'recency' as an example. However, we found that the AIC is the same whether or not the model contains a recency (both are 50195). the predictors do a sufficiently good job of accounting for differences in slopes that the variance component for slopes is no longer needed.
+
+For the fixed effects, can we employ something we learned before like variable selection or multicollinearity to get good predictors? We will try to select the best predictors later. Let us analyze more about the random effect models now!
+
+## Try random slope?
+Will random slopes also help to improve the model? It deserves to be studied.
+```{r}
+fit.model5 <- lmer(Income~1+NumCatalogPurchases+NumDealsPurchases+(1+NumCatalogPurchases|Education), data=data)
+summary(fit.model5)
+```
+
+```{r}
+isSingular(fit.model5)
+```
+Singular models mean there are linear dependencies or collinearity among the predictor variables.If the model is singular, the result is easy to get bias so it isn't good enough.
+In our project, we try many times but easy to get singular models. We just list one as an example try here. 
+
+## Can we add more random intercepts?
+
+So we decided to consider more intercepts at first.
+
+```{r}
+fit.modelr2 <- lmer(Income~1+NumDealsPurchases+NumCatalogPurchases+(1|Education)+(1|Year_Birth), data=data)
+summary(fit.modelr2)
+```
+Customer's birth year may also be closely related to income levels. People born earlier are more likely to earn higher incomes because they will have more experience. We add a new random intercept named 'year_birth'.
+
+```{r}
+performance::icc(fit.modelr2)
+```
+The adjusted ICC still increases! Residual also decreases from 397394718 to 394764476!
+
+```{r}
+ranef(fit.modelr2)
+```
+We use 'ranef() ' to make a list containing the estimated random effects for each level of the grouping factor.
+
+```{r}
+age = 2023-Year_Birth
+fit.modelr3 <- lmer(Income~1+NumDealsPurchases+NumCatalogPurchases+(1|Education)+(1|age), data=data)
+summary(fit.modelr3)
+```
+We also want to try use age instead of year_birth
+
+```{r}
+performance::icc(fit.modelr3)
+```
+The effect doesn't change too much. This is of course because the variables did not acquire large changes that would affect the variance, but rather the intercepts.
+
+## More random intercepts?
+
+```{r}
+fit.modelr4 <- lmer(Income~1+NumCatalogPurchases+NumDealsPurchases+(1|Education)+(1|Year_Birth)+(1|Complain), data=data)
+summary(fit.modelr4)
+```
+```{r}
+performance::icc(fit.modelr4)
+```
+```{r}
+fit.modelr5 <- lmer(Income~1+NumCatalogPurchases+(1|Education)+(1|Year_Birth)+(1|Complain)+(1|Recency), data=data)
+summary(fit.modelr5)
+```
+
+
+```{r}
+performance::icc(fit.modelr5)
+```
+```{r}
+ranef(fit.modelr5)
+```
+
+```{r}
+fit.modelr6 <- lmer(Income~1+NumDealsPurchases+(1|Education)+(1|Year_Birth)+(1|Complain)+(1|Recency)+(1|Response), data=data)
+summary(fit.modelr5)
+```
+
+```{r}
+performance::icc(fit.modelr6)
+```
+
+We found we can add at most 5 random intercepts. The ICC increases to 0.307 which is very high. However, it's not true that more random intercepts are better. The residual is 394900000 now, it is higher than the previous ones, which tends to lead to large errors. You also may find we don't add NumCatalogPurchases in our 'fit.modelr6' because it will make our model singular. 
+
+```{r}
+fit.modelr6ML <- lmer(Income~1+NumDealsPurchases+(1|Education)+(1|Year_Birth)+(1|Complain)+(1|Recency)+(1|Response), data=data, REML=FALSE)
+summary(fit.modelr6ML)
+```
+ML method does not account for the random effects' estimation uncertainty,it can result in a downward bias in the fixed-effects estimates. The residual is 566940426 but still very high. The AIC is 51063.4. Can we make it smaller?
+
+# Try random slopes again!
+
+```{r}
+fit.modelr7 <- lmer(Income~1++NumDealsPurchases+Recency+(1|Education)+(1|Year_Birth)+(1+AcceptedCmp1|Recency), data=data, REML=FALSE)
+summary(fit.modelr7)
+```
+
+
+```{r}
+fit.modelr8 <- lmer(Income~1+NumDealsPurchases+Recency+(1|Education)+(1|Year_Birth)+(1+AcceptedCmp5+AcceptedCmp1|Recency)+(1|Response), data=data,REML=FALSE)
+summary(fit.modelr8)
+```
+If we want to add more random slopes, we must drop some existing variables. However, the AIC is from  51063.4 to  50973.9, which increases a little.This try may not good enough but very interesting:
+AcceptedCmp1: 1 if customer accepted the offer in the 1st campaign, 0 otherwise
+AcceptedCmp5: 1 if customer accepted the offer in the 5th campaign, 0 otherwise
+Recency: Number of days since customer's last purchase
+
+Only the offer of the first campaign and the last campaign can be used as random slopes, otherwise the models will be singular! Customers may pay more attention to the first campaign because of the freshness. different recencies have different changes to accept the offers. If they always purchase goods from this company, they are more likely to be concerned about campaigns; customers may also care about the last campaign, because customers may not get a chance after that. Other campaigns are not as attractive.
+
+
+```{r}
+anova(fit.modelr6ML, fit.modelr7,fit.modelr8)
+```
+We use 'anova()' to compare the effect of random slopes. As you can see, adding more random slopes can make AIC smaller! However, it's not growing very fast. 
+
+We have tried many kinds of random effects. However, we didn't systematically learn how to compare random effect models, we try many models but don't know how to choose the best one. Overall, we have deepened our understanding in these attempts, and understand more about linear models!
+
+# Now , let us focus on fixed oredictors!!!
+We want to try the knowledgeabout variable selection.
+
+```{r}
+#backward method to select variables
+full<-lm(Income~.,data=data)
+back_data<-step(full,data=data,direction="backward",k=2)#AIC method
+```
+
+```{r}
+#forward method to select variables
+null<-lm(Income~1,data=data)
+full<-lm(Income~.,data=data)
+forward_data<-step(null,scope=list(lower=null,upper=full),direction="forward",k=2)#AIC method
+```
+Even though the system helped to select a lot of predictors for us, most of the predictors don't have much impacts because AIC is pretty close. For example:
+
+Step:  AIC=43196.91
+Income ~ NumCatalogPurchases + NumWebVisitsMonth + MntWines + 
+    NumWebPurchases + MntMeatProducts + Teenhome + Education
+
+                      Df  Sum of Sq        RSS   AIC
++ MntSweetProducts     1 3.1731e+09 6.3810e+11 43188
++ MntFruits            1 2.3443e+09 6.3893e+11 43191
++ AcceptedCmp1         1 2.2486e+09 6.3902e+11 43191
++ AcceptedCmp5         1 2.1812e+09 6.3909e+11 43191
++ AcceptedCmp4         1 1.8378e+09 6.3943e+11 43193
++ NumStorePurchases    1 1.5595e+09 6.3971e+11 43194
++ MntFishProducts      1 1.3564e+09 6.3992e+11 43194
++ AcceptedCmp3         1 7.0692e+08 6.4057e+11 43196
++ Recency              1 6.1314e+08 6.4066e+11 43197
+<none>                              6.4127e+11 43197
++ NumDealsPurchases    1 4.9162e+08 6.4078e+11 43197
++ NumDealsPurchases2   1 4.9162e+08 6.4078e+11 43197
++ ID                   1 4.6879e+08 6.4080e+11 43197
++ Kidhome              1 4.5983e+08 6.4081e+11 43197
++ AcceptedCmp2         1 4.2999e+08 6.4084e+11 43197
++ Year_Birth           1 7.6200e+07 6.4120e+11 43199
++ MntGoldProds         1 5.2451e+07 6.4122e+11 43199
++ Complain             1 2.5275e+07 6.4125e+11 43199
+
+when the seventh variable is selected, the AIC is very close. AIC without more predictors is 43197, is just a little larger than the smallest AIC, 43188. Meanwhile, the AICs of many new predictors is the same (MntFruits, AcceptedCmp1, AcceptedCmp5 are all 43191).
+
+## Forward analysis
+
+Here we observed that the NumCatalogPurchase attribute is so important, as it was selected during the first round when the model was null, which can minimize the AIC value at that time, so we consider to use it in our model.
+```{r}
+fit.model6 <- lmer(Income~1+NumCatalogPurchases+(1|Education), data=data)
+summary(fit.model6)
+```
+
+Because most variables have little effect, we just choose the best four predictors and end.
+
+```{r}
+fit.model7 <- lmer(Income~1+NumCatalogPurchases+NumWebVisitsMonth+MntWines+NumWebPurchases+(1|Education), data=data)
+summary(fit.model7)
+```
+```{r}
+drop1(fit.model7, test="Chisq")
+```
+We use 'drop1()' to test should we keep them in the model. We should keep the fixed effects for 4 variables since the p-values are less than 0.05.
+
+```{r}
+fit.model8 <- lmer(Income~1+NumCatalogPurchases+NumWebVisitsMonth+(1|Education)+(1|Year_Birth), data=data)
+summary(fit.model8)
+```
+
+```{r}
+performance::icc(fit.model8)
+```
+However, more random predictors may make the model singular. It is difficult to add all of fixed effects and fixed effects to a model at the same time. In this case, we try to use only two fixed predictors and two random intercepts to build a new model. Models with more random effects are better, models with more fixed effects are better, or a combination of both are better? We aren't sure. We will compare the effects later. Then we want to analyse the multicollinearity first to see whrther we can find a better model.
+
+
+## Select only the text columns for encoding
+
+Because in vif and eigen value analysis, we cannot have those labeled columns exist in the dataset, so here we decide to encode the data into numeric value first. And then we will apply those three different stepwise method in order to select the attributes we need for further analysis.
+```{r}
+text_columns <- select_if(data, is.character)
+
+# Encode text columns
+encoded <- text_columns %>%
+  mutate(across(everything(), as.factor)) %>%
+  mutate(across(everything(), as.numeric))
+
+# Select numeric columns
+numeric_columns <- select_if(data, is.numeric)
+
+# Combine non-text and numeric columns
+new_data <- bind_cols(numeric_columns, encoded)
+#backward method to select variables
+full<-lm(Income~.,data=new_data)
+back_data<-step(full,data=new_data,direction="backward",k=2)#AIC method
+```
+```{r}
+#forward method to select variables
+null<-lm(Income~1,data=new_data)
+full<-lm(Income~.,data=new_data)
+b_model<-step(null,scope=list(upper=full),data=data,direction = "both")
+```
+
+## Select attributes
+
+Because from backward, forward, and both stepwise result, finally we reached the same decision, so here we just choose the varibles that obtained from the model we obtained from them.We first take a look at all the attribute we have here. All the vif value are less then 5.
+```{r}
+VIF<-vif(lm(Income ~ NumCatalogPurchases + NumWebVisitsMonth + MntWines + 
+    NumWebPurchases + MntMeatProducts + Teenhome + Education + 
+    MntSweetProducts + AcceptedCmp4 + AcceptedCmp1 + MntFruits + 
+    NumStorePurchases + AcceptedCmp5 + Kidhome + NumDealsPurchases + 
+    AcceptedCmp3 + Recency,data=data))
+# detach(data)
+VIF<5
+```
+
+Here we try to use the remaining data to make a combined_data set for further analysis, and by plot the data, we can find that some attributes have a high multicollinearity coefficient which we need to deal with later.
+```{r}
+attribute_names <- names(coef(back_data))
+encode_data <- data["Income"]
+for(col in attribute_names[2:18]){
+  encode_data<-bind_cols(encode_data,data[col])
+  # break
+}
+# Select only the text columns for encoding
+text_columns <- select_if(encode_data, is.character)
+
+# Encode text columns
+encoded <- text_columns %>%
+  mutate(across(everything(), as.factor)) %>%
+  mutate(across(everything(), as.numeric))
+
+# Select numeric columns
+numeric_columns <- select_if(encode_data, is.numeric)
+
+# Combine non-text and numeric columns
+combined_data <- bind_cols(numeric_columns, encoded)
+par(cex.lab = 1.5, cex.main = 1.5, cex.axis = 7)
+corrplot(cor(combined_data),tl.srt = 45, tl.cex = 0.6,cex.lab = 0.1,method= "number")
+
+```
+
+## Overall analysis based on Eigenvalue analysis
+
+We first use the eigen method to diagose the multicollinearity,find it is severe, since K>>1000,which means in the dataset, there exist strong evidence of multicollinearity.
+```{r}
+X<-as.matrix(combined_data)
+lambda<-eigen(t(X)%*%X)$values
+k<-max(lambda)/min(lambda)
+k
+k>1000
+```
+
+## Overall analyse based on vif method
+
+But vif method find the data don't have numeric value over 5 or 10, but since there are lot of value among 2-3, so the multicollinearity is still exist.Then we consider to drop some of the variables in next step.
+```{r}
+vif(lm(Income~.,data=combined_data))
+```
+By look into both side we find that eigen method is more straight forward to show the multicolinearity, and can show how severe it is.
+
+# Variable selection
+
+Then we try to drop some of the features, I try to drop the features which have bigest vif value, and ket the k value drop to less than 1000,Until we droped the eighth element "AcceptedCmp5","AcceptedCmp1",even though their vif value is not that huge, the k value droped a significantly, seems that other attribute don't have a significant influence on k value. And we also discovered that the vif value is highly related to sample size, so if we only sample 50 samples from the dataset, some of the attributes attain huge vif value more than 6, so we decided to remove them.
+```{r}
+set.seed(1234)
+# Specify the name of the column to drop
+column_to_drop <- c("AcceptedCmp5","AcceptedCmp1","NumCatalogPurchases","NumWebVisitsMonth","MntWines")
+
+# Drop the column from the data frame
+combined_data <- combined_data[, !names(combined_data) %in% column_to_drop]
+vif(lm(Income~.,data=combined_data[sample(nrow(combined_data), 50), ]))
+X<-as.matrix(combined_data)
+lambda<-eigen(t(X)%*%X)$values
+k<-max(lambda)/min(lambda)
+k
+# corrplot(cor(combined_data),tl.srt = 45, tl.cex = 0.6,cex.lab = 0.1,method= "number")
+```
+
+# Analyse by R-student plot
+here we sampled 50 samples from the dataset, and we can see the R-student looks normal, which means the evidence of multicolinearity is not really severe. 
+```{r}
+set.seed(1234)
+# detach(data)
+# fit.modelr8 <- lmer(Income~MntMeatProduct(1|Education)+(1|Year_Birth)+(1|Complain)+(1+data$AcceptedCmp5+data$AcceptedCmp1|Recency)+(1|Response), data=combined_data,REML=FALSE)
+# AIC(fit.modelr8)
+res<-lm(Income~.,data=combined_data[sample(nrow(combined_data), 50), ])
+r<-rstudent(res)
+qqplot(sort(r),ppoints(res$fit),ylab = "Income",xlab="selected variales",main="R-student")
+```
+So we by now, we learned that, we can combine both method to deal with existence of multicolliearity, seems vif gives more detail on each variables, and based on the observation on the change of both vif and K value, we can deal with muticolliearity much more efficiently.
+
+
+# Comparision
+```{r}
+# New data for prediction
+fit.modelr7 <- lmer(Income~1+NumDealsPurchases+Recency+(1|Education)+(1|Year_Birth)+(1+AcceptedCmp1|Recency), data=data, REML=FALSE)
+fit.model8 <- lmer(Income~1+NumCatalogPurchases+NumWebVisitsMonth+(1|Education)+(1|Year_Birth), data=data)
+fit.model7 <- lmer(Income~1+NumCatalogPurchases+NumWebVisitsMonth+MntWines+NumWebPurchases+(1|Education), data=data)
+new_data_r7 <- data.frame(NumDealsPurchases = c(1,2,5),
+                         Recency=c(26,26,94),
+                         Education=c("Graduation","Graduation","PhD"),
+                         Year_Birth=c(1965,1984,1981),
+                         AcceptedCmp1=c(0,0,0))
+new_data_8<-data.frame(NumCatalogPurchases = c(2,0,3),
+                         NumWebVisitsMonth=c(4,6,5),
+                         Education=c("Graduation","Graduation","PhD"),
+                         Year_Birth=c(1965,1984,1981))
+new_data_7<-data.frame(NumCatalogPurchases = c(2,0,3),
+                         NumWebVisitsMonth=c(4,6,5),
+                         Education=c("Graduation","Graduation","PhD"),
+                         MntWines=c(426,11,173),
+                       NumWebPurchases=c(8,2,5))
+print("actua7 value:71612.0 26646.0 58293.0")
+predictions_r7<- predict(fit.modelr7, newdata = new_data_r7)
+predictions_r7
+predictions_8<- predict(fit.model8, newdata = new_data_8)
+predictions_8
+predictions_7<- predict(fit.model7, newdata = new_data_7)
+predictions_7
+
+```
+
+ Models with more random effects are better, models with more fixed effects are better, or a combination of both are better? Let us take a try! 
+ 
+ You can find, our models with more fixed effects perform the best, its results are closer to the real income, but it still not very good. However, in the last prediction. the mixed model predict the best. Different groups perhaps have different best models and combine them may improve the accuracy. Due to our ability isn't good enough, we stop our analyses here.
+ 
+ 
+ 
+ Our considerations are still very limited, and there are still significant gaps in the accurate prediction of data. However, performing clustering to summarize customer segments instead predict income may be enough for the company. In that case, using our linear models and then clustering them may be powerful!
+ 
+ Anyway, we enjoyed this project!
+ 
+ 
